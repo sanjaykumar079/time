@@ -1,0 +1,338 @@
+{% extends 'base.html' %}
+{% block title %}Select Options{% endblock %}
+{% block content %}
+    <section class="select-options-section">
+        <h2>Timetable Parameters and Teacher Management</h2>
+
+        {% if selected_field and selected_year %}
+            <div class="side-by-side-container">
+                <!-- Select Field and Year -->
+                <div class="form-container">
+                    <h3>Select Branch and Year</h3>
+                    <form id="select-form" method="GET" action="{{ url_for('select_options') }}" class="futuristic-form">
+                        <div class="form-group">
+                            <label for="field">Branch:</label>
+                            <select name="field" id="field" onchange="updateOptions()" required>
+                                <option value="" {% if not selected_field %}selected{% endif %}>Select Branch</option>
+                                {% for f in fields %}
+                                    <option value="{{ f.field_id }}" {% if f.field_id == selected_field %}selected{% endif %}>
+                                        {{ f.name }} (ID: {{ f.field_id }})
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="year">Year:</label>
+                            <select name="year" id="year" onchange="updateOptions()" required>
+                                <option value="" {% if not selected_year %}selected{% endif %}>Select Year</option>
+                                {% for y in years %}
+                                    <option value="{{ y.year }}" {% if y.year|string == selected_year %}selected{% endif %}>
+                                        {{ y.name }} (Year: {{ y.year }})
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Sections:</label>
+                            <div class="section-list">
+                                {% if sections %}
+                                    {% for section in sections %}
+                                        <span>{{ section.section_id }}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    <span>No sections generated yet. Select Field and Year.</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Edit Sections Form -->
+                <div class="form-container">
+                    <h3>Edit Number of Sections</h3>
+                    <form method="POST" action="{{ url_for('select_options') }}" class="futuristic-form">
+                        <input type="hidden" name="action" value="edit_sections">
+                        <input type="hidden" name="field" value="{{ selected_field }}">
+                        <input type="hidden" name="year" value="{{ selected_year }}">
+                        <div class="form-group">
+                            <label for="num_sections">Number of Sections:</label>
+                            <input type="number" name="num_sections" id="num_sections" value="{{ num_sections }}" min="1" required>
+                        </div>
+                        <button type="submit" class="glow-button">Update Sections</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Pre-Book Slots -->
+            <h3>Pre-Book Slots</h3>
+            {% for section in sections %}
+                <h4>{{ section.section_id }}</h4>
+                <p>Pre-booked: {{ pre_booked_counts[section.section_letter] }} slots, Remaining: {{ remaining_slots[section.section_letter] }} slots (Total: 36 slots/week)</p>
+                <form method="POST" action="{{ url_for('select_options') }}" class="futuristic-form">
+                    <input type="hidden" name="action" value="pre_book_slots">
+                    <input type="hidden" name="field" value="{{ selected_field }}">
+                    <input type="hidden" name="year" value="{{ selected_year }}">
+                    <input type="hidden" name="section_letter" value="{{ section.section_letter }}">
+                    <div class="form-group">
+                        <label>Select Slots to Pre-Book:</label>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Day</th>
+                                    {% for period in periods %}
+                                        <th>{{ period }}th Period</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for day in days %}
+                                    <tr>
+                                        <td>{{ day }}</td>
+                                        {% for period in periods %}
+                                            <td>
+                                                <input type="checkbox" name="slot_{{ day }}_{{ period }}"
+                                                       {% if (day, period) in pre_booked_slots.get((selected_field, selected_year, section.section_letter), []) %}checked{% endif %}
+                                                       onchange="updateSlotCount('{{ section.section_letter }}')">
+                                            </td>
+                                        {% endfor %}
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <button type="submit" class="glow-button">Save Pre-Booked lab sessions</button>
+                </form>
+            {% endfor %}
+
+            <!-- Manage Teachers Tables -->
+            {% if sections %}
+                {% for section in sections %}
+                    <h3>Manage Teachers for {{ section.section_id }}</h3>
+                    <p class="slot-count">Remaining Slots: {{ remaining_slots[section.section_letter] }} (Total: 36 slots/week, Pre-booked: {{ pre_booked_counts[section.section_letter] }}, Assigned: {{ assigned_slots_by_section[section.section_letter] }})</p>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Subject</th>
+                                <th>Slots/Week</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set has_teachers = false %}
+                            {% for teacher in teachers %}
+                                {% if section.section_letter in teacher.sections %}
+                                    {% set has_teachers = true %}
+                                    <tr>
+                                        <td>{{ teacher.teacher_id }}</td>
+                                        <td>
+                                            <form method="POST" action="{{ url_for('select_options') }}" style="display:inline;" onsubmit="return validateSlots(this, '{{ teacher.teacher_id }}', {{ teacher.slots_per_week }})" data-remaining-slots="{{ remaining_slots[section.section_letter] }}">
+                                                <input type="hidden" name="action" value="edit_teacher">
+                                                <input type="hidden" name="teacher_id" value="{{ teacher.teacher_id }}">
+                                                <input type="hidden" name="field" value="{{ selected_field }}">
+                                                <input type="hidden" name="year" value="{{ selected_year }}">
+                                                <input type="text" name="name" value="{{ teacher.name }}" required>
+                                        </td>
+                                        <td><input type="text" name="subject" value="{{ teacher.subject }}" required></td>
+                                        <td><input type="number" name="slots_per_week" value="{{ teacher.slots_per_week }}" min="1" max="{{ remaining_slots[section.section_letter] + teacher.slots_per_week }}" required></td>
+                                        <td>
+                                            <button type="submit" class="glow-button">Save</button>
+                                            </form>
+                                            <form method="POST" action="{{ url_for('select_options') }}" style="display:inline;">
+                                                <input type="hidden" name="action" value="delete_teacher">
+                                                <input type="hidden" name="teacher_id" value="{{ teacher.teacher_id }}">
+                                                <input type="hidden" name="field" value="{{ selected_field }}">
+                                                <input type="hidden" name="year" value="{{ selected_year }}">
+                                                <button type="submit" class="glow-button danger">Delete</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            {% endfor %}
+                            <tr id="add-teacher-row-{{ section.section_letter }}" style="display: none;">
+                                <td>
+                                    <form method="POST" action="{{ url_for('select_options') }}" onsubmit="return validateSlots(this, '', 0)" data-remaining-slots="{{ remaining_slots[section.section_letter] }}">
+                                        <input type="hidden" name="action" value="add_teacher">
+                                        <input type="hidden" name="field" value="{{ selected_field }}">
+                                        <input type="hidden" name="year" value="{{ selected_year }}">
+                                        <input type="hidden" name="section" value="{{ section.section_letter }}">
+                                        Auto-generated
+                                </td>
+                                <td><input type="text" name="name" placeholder="Name" required></td>
+                                <td><input type="text" name="subject" placeholder="Subject" required></td>
+                                <td><input type="number" name="slots_per_week" placeholder="Slots/Week" min="1" max="{{ remaining_slots[section.section_letter] }}" required></td>
+                                <td>
+                                    <button type="submit" class="glow-button">Add</button>
+                                    <button type="button" class="glow-button danger" onclick="toggleAddTeacherForm('{{ section.section_letter }}')">Cancel</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% if not has_teachers %}
+                                <tr>
+                                    <td colspan="5" style="text-align: center;">
+                                        <button type="button" class="glow-button" onclick="toggleAddTeacherForm('{{ section.section_letter }}')">Add</button>
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                    {% if has_teachers %}
+                        <button type="button" class="glow-button" onclick="toggleAddTeacherForm('{{ section.section_letter }}')">Add</button>
+                    {% endif %}
+                {% endfor %}
+            {% else %}
+                <p>No sections available. Please select a branch and year.</p>
+            {% endif %}
+
+            <!-- Generate Timetable -->
+            <h3>Generate Timetable</h3>
+            <form method="POST" action="{{ url_for('select_options') }}" class="futuristic-form">
+                <input type="hidden" name="action" value="generate_timetable">
+                <input type="hidden" name="field" value="{{ selected_field }}">
+                <input type="hidden" name="year" value="{{ selected_year }}">
+                <button type="submit" id="new" class="glow-button">Generate Timetable</button>
+            </form>
+
+        {% else %}
+            <div class="side-by-side-container">
+                <div class="form-container">
+                    <h3>Select branch and Year</h3>
+                    <form id="select-form" method="GET" action="{{ url_for('select_options') }}" class="futuristic-form">
+                        <div class="form-group">
+                            <label for="field">Field:</label>
+                            <select name="field" id="field" onchange="updateOptions()" required>
+                                <option value="" {% if not selected_field %}selected{% endif %}>Select branch</option>
+                                {% for f in fields %}
+                                    <option value="{{ f.field_id }}" {% if f.field_id == selected_field %}selected{% endif %}>
+                                        {{ f.name }} (ID: {{ f.field_id }})
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="year">Year:</label>
+                            <select name="year" id="year" onchange="updateOptions()" required>
+                                <option value="" {% if not selected_year %}selected{% endif %}>Select Year</option>
+                                {% for y in years %}
+                                    <option value="{{ y.year }}" {% if y.year|string == selected_year %}selected{% endif %}>
+                                        {{ y.name }} (Year: {{ y.year }})
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Sections:</label>
+                            <div class="section-list">
+                                {% if sections %}
+                                    {% for section in sections %}
+                                        <span>{{ section.section_id }}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    <span>No sections generated yet. Select branch and Year.</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="form-container">
+                    <p>Please select a branch and Year to enable section editing and teacher management.</p>
+                </div>
+            </div>
+        {% endif %}
+    </section>
+
+    <script>
+        function updateOptions() {
+            const field = document.getElementById('field').value;
+            const year = document.getElementById('year').value;
+            window.location.href = `/select_options?field=${field}&year=${year}`;
+        }
+
+        function toggleAddTeacherForm(sectionLetter) {
+            const row = document.getElementById(`add-teacher-row-${sectionLetter}`);
+            if (row.style.display === "none" || row.style.display === "") {
+                row.style.display = "table-row";
+            } else {
+                row.style.display = "none";
+            }
+        }
+
+        // Show flash messages in modal
+        document.addEventListener('DOMContentLoaded', function() {
+            const messages = [
+                {% for message in get_flashed_messages() %}
+                    "{{ message }}",
+                {% endfor %}
+            ];
+
+            if (messages.length > 0) {
+                const flashMessagesDiv = document.getElementById('flashMessages');
+                flashMessagesDiv.innerHTML = messages.map(msg => `<p>${msg}</p>`).join('');
+                const modal = document.getElementById('flashModal');
+                modal.style.display = 'flex';
+            }
+        });
+
+        // Update slot count dynamically
+        function updateSlotCount(sectionLetter) {
+            const totalSlots = 36;
+            const checkboxes = document.querySelectorAll(`input[name^="slot_"][type="checkbox"]`);
+            let checkedCount = 0;
+            checkboxes.forEach(checkbox => {
+                if (checkbox.checked) {
+                    checkedCount++;
+                }
+            });
+            const remaining = totalSlots - checkedCount;
+            const slotCountDisplay = document.querySelector(`#slot-count-${sectionLetter}`);
+            if (slotCountDisplay) {
+                slotCountDisplay.textContent = `Pre-booked: ${checkedCount} slots, Remaining: ${remaining} slots (Total: 36 slots/week)`;
+            }
+        }
+
+        // Validate slots when adding or editing a teacher
+        function validateSlots(form, teacherId, currentSlots) {
+            const slotsInput = form.querySelector('input[name="slots_per_week"]');
+            const remainingSlots = parseInt(form.getAttribute('data-remaining-slots'));
+            const newSlots = parseInt(slotsInput.value);
+
+            if (isNaN(newSlots) || newSlots < 1) {
+                alert("Slots per week must be a valid number greater than 0.");
+                return false;
+            }
+
+            if (teacherId) {
+                // For editing, allow the current slots to be reallocated
+                if (newSlots > remainingSlots + currentSlots) {
+                    alert(`Cannot assign ${newSlots} slots. Only ${remainingSlots + currentSlots} slots are available for this section.`);
+                    return false;
+                }
+            } else {
+                // For adding, check against remaining slots
+                if (newSlots > remainingSlots) {
+                    alert(`Cannot assign ${newSlots} slots. Only ${remainingSlots} slots are available for this section.`);
+                    return false;
+                }
+            }
+            return true;
+        }
+    </script>
+    <style>
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+        .form-group input[type="checkbox"] {
+            margin-right: 0.5rem;
+        }
+        .slot-count {
+            color: #00d4ff;
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+    </style>
+{% endblock %}

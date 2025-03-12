@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% block title %}Timetable{% endblock %}
+{% block content %}
+    <section class="timetable-section">
+        <h2>Timetable for {{ field_id }} - Year {{ year }}</h2>
+        {% if schedule and sections %}
+            {% for section in sections %}
+                <h3>Section {{ section.section_id }}</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Day</th>
+                            {% for period in periods %}
+                                <th>{{ period }}th Period</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for day in days %}
+                            <tr>
+                                <td>{{ day }}</td>
+                                {% for period in periods %}
+                                    <td class="{% if pre_booked.get(day, {}).get(period, {}).get(section.section_id) %}pre-booked{% endif %}">
+                                        {% if pre_booked.get(day, {}).get(period, {}).get(section.section_id) %}
+                                            <div class="reserved-slot">
+                                                Lab Session
+                                            </div>
+                                        {% elif schedule.get(day, {}).get(period, {}).get(section.section_id) %}
+                                            {% for details in schedule[day][period][section.section_id] %}
+                                                <div>
+                                                    <strong>Sub: </strong> {{ details.subject }}<br>
+                                                  
+                                                    <strong>Faculty: </strong> {{ details.faculty }}
+                                                </div>
+                                            {% endfor %}
+                                        {% else %}
+                                            <span class="empty-slot">Free</span>
+                                        {% endif %}
+                                    </td>
+                                {% endfor %}
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% endfor %}
+        {% else %}
+            <p>No timetable generated. Please ensure teachers are configured.</p>
+        {% endif %}
+        <a href="{{ url_for('select_options', field=field_id, year=year) }}" class="glow-button">Back to Options</a>
+    </section>
+
+    <style>
+        .pre-booked {
+            background-color: #fff3cd; /* Light yellow background for pre-booked slots */
+        }
+        .reserved-slot {
+            color: #856404;
+            font-weight: bold;
+            text-align: center;
+        }
+    </style>
+{% endblock %}
